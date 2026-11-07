@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: tourism
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/tourism_db}
+    username: ${DB_USERNAME:tourism_user}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+  flyway:
+    enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
