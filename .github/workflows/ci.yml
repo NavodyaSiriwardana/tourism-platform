@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+    branches: [develop, main]
+
+# Cancel older runs of the same branch when a new commit arrives.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # CI-only throwaway password for the temporary MySQL container. Not a real secret.
+  CI_DB_PASSWORD: ci-only-password-not-a-secret
+
+jobs:
+  backend:
+    name: backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: ci-only-root-password
+          MYSQL_DATABASE: tourism_db
+          MYSQL_USER: tourism_user
+          MYSQL_PASSWORD: ci-only-password-not-a-secret
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci-only-root-password"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21 (Temurin) with Maven cache
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Wait for MySQL to accept connections
+        run: |
+          for i in $(seq 1 30); do
+            if (echo > /dev/tcp/127.0.0.1/3306) 2>/dev/null; then
+              echo "MySQL is up"; exit 0
+            fi
+            echo "Waiting for MySQL ($i/30)..."; sleep 2
+          done
+          echo "MySQL did not start in time"; exit 1
+
+      - name: Run tests
+        env:
+          DB_URL: jdbc:mysql://127.0.0.1:3306/tourism_db
+          DB_USERNAME: tourism_user
+          DB_PASSWORD: ${{ env.CI_DB_PASSWORD }}
+        run: ./mvnw -B test
